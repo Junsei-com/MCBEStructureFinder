@@ -1,0 +1,22 @@
+name: Bedrock Seed Searcher
+
+on:
+  workflow_dispatch:
+
+jobs:
+  search-seeds:
+    runs-on: ubuntu-latest
+    steps:
+    - name: コードをダウンロード
+      uses: actions/checkout@v4
+
+    - name: 必要なパーツ（cubiomes）を合体
+      run: |
+        rm -rf cubiomes
+        git clone https://github.com/Cubitect/cubiomes.git cubiomes
+
+    - name: クラウドで爆速コンパイル
+      run: g++ -O3 main.cpp be_finder.cpp structure.cpp cubiomes/*.c -I. -Icubiomes -o finder
+
+    - name: 20マス以内の神シードを検索開始！
+      run: ./finder
