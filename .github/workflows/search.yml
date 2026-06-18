@@ -1,4 +1,4 @@
-name: 統合版 カスタム神シード検索ツール(エラー修正版)
+name: 統合版 カスタム神シード検索ツール(画像エラー修正版)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: 'BERuindPortal'
         type: choice
         options:
-          - 'BERuindPortal'      # 荒廃したポータル（eなしの正確な名前）
+          - 'BERuindPortal'      # 荒廃したポータル
           - 'BEBuriedTreasure'    # 埋もれた宝
           - 'BEStronghold'        # 要塞（エンドポータル）
           - 'BEFortress'          # ネザー要塞
@@ -19,7 +19,7 @@ on:
         required: true
         default: '20'
       max_seeds:
-        description: '③ スキャンするシード数（まずは1000万個がおすすめ）'
+        description: '③ スキャンするシード数'
         required: true
         default: '10000000'
 
@@ -33,7 +33,7 @@ jobs:
         cd MCBEStructureFinder
         git submodule update --init --recursive
 
-    - name: 🛠️ エラー原因を100% 潰した検索コードの生成
+    - name: 🛠️ 最後の2大エラーを修正した検索コードの生成
       run: |
         cd MCBEStructureFinder
         
@@ -43,27 +43,26 @@ jobs:
         #include "be_finder.h"
 
         int main() {
-            // 1. エラー指摘箇所の修正：大文字小文字の修正
             initBiomes(); 
             
-            LayerStack g;
-            // 2. エラー指摘箇所の修正：古いcubiomesモジュールに合わせたバージョン指定
-            setupGenerator(&g, MC_1_19); 
+            // 1. エラー修正：型を標準の Generator に変更
+            Generator g;
+            
+            // 2. エラー修正：MC_1_19 を廃止し、定義されている MC_1_18 を指定（引数も3つに修正）
+            setupGenerator(&g, MC_1_18, 0); 
 
-            // GitHubの画面で選んだ設定をそのままC++に注入
             BEStructureType target_type = ${{ github.event.inputs.structure_type }};
             double max_dist = ${{ github.event.inputs.max_distance }};
             uint64_t max_seeds = ${{ github.event.inputs.max_seeds }};
 
             std::cout << "========================================================\n";
-            std::cout << "⚡ 【エラー修正版】統合版 1.18〜1.21+ 神シードスキャン中...\n";
+            std::cout << "⚡ 【画像エラー修正版】統合版 神シードスキャン中...\n";
             std::cout << "========================================================\n";
 
             for (uint64_t seed = 0; seed < max_seeds; ++seed) {
-                // 3. 引数の型（BEStructureType）を正しく合わせたため、この関数名で100%認識されます
-                Pos pos = getStructurePos(target_type, seed, 0, 0);
+                // 3. エラー修正：正しい関数名 get_structure_pos (スネークケース) に変更
+                Pos pos = get_structure_pos(target_type, seed, 0, 0);
 
-                // 🌟 埋もれた宝の場合：初期1チャンク（0,0 〜 16,16マスの間）にあるか判定
                 if (target_type == BEBuriedTreasure) {
                     if (pos.x >= 0 && pos.x <= 16 && pos.z >= 0 && pos.z <= 16) {
                         std::cout << "🎯 【神シード発見】 Seed: " << seed << " (初期1チャンク内に埋もれた宝: X=" << pos.x << ", Z=" << pos.z << ")\n";
@@ -71,7 +70,6 @@ jobs:
                     continue;
                 }
 
-                // 🌟 その他の構造物：初期リスポーン(0,0)からの直線距離で判定
                 double dist = std::sqrt((double)pos.x * pos.x + (double)pos.z * pos.z);
                 if (dist <= max_dist) {
                     std::cout << "🎯 【神シード発見】 Seed: " << seed << " (距離: " << dist << "マス / 座標 X: " << pos.x << ", Z: " << pos.z << ")\n";
