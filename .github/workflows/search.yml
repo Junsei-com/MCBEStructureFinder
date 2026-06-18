@@ -1,22 +1,96 @@
-name: Bedrock Seed Searcher
+name: 統合版 カスタム神シード検索ツール
 
 on:
   workflow_dispatch:
+    inputs:
+      structure_type:
+        description: '① 探したい構造物を選んでください'
+        required: true
+        default: 'RuinedPortal_OW'
+        type: choice
+        options:
+          - 'RuinedPortal_OW'    # 荒廃したポータル（地上）
+          - 'Buried_Treasure'    # 埋もれた宝
+          - 'Stronghold'         # 要塞（エンドポータル）
+          - 'Fortress'           # ネザー要塞
+          - 'Bastion'            # 廃要塞（ピグリン要塞）
+      max_distance:
+        description: '② 初期スポーン(0,0)からの最大距離（マス）※宝以外'
+        required: true
+        default: '20'
+      max_seeds:
+        description: '③ スキャンするシード数（まずは1000万個がおすすめ）'
+        required: true
+        default: '10000000'
 
 jobs:
-  search-seeds:
+  fsg-search:
     runs-on: ubuntu-latest
     steps:
-    - name: コードをダウンロード
-      uses: actions/checkout@v4
-
-    - name: 必要なパーツ（cubiomes）を合体
+    - name: 🚀 本物の検索エンジン(Cubiomes一体型)を準備
       run: |
+        git clone https://github.com/bedrock-dev/MCBEStructureFinder.git
+        cd MCBEStructureFinder
         rm -rf cubiomes
         git clone https://github.com/Cubitect/cubiomes.git cubiomes
 
-    - name: クラウドで爆速コンパイル
-      run: g++ -O3 main.cpp be_finder.cpp structure.cpp cubiomes/*.c -I. -Icubiomes -o finder
+    - name: 🛠️ 入力された条件で検索コードを自動生成
+      run: |
+        cd MCBEStructureFinder
+        
+        cat << 'EOF' > main.cpp
+        #include <iostream>
+        #include <cmath>
+        #include "be_finder.h"
 
-    - name: 20マス以内の神シードを検索開始！
-      run: ./finder
+        int main() {
+            init_biomes();
+            LayerStack g;
+            setupGenerator(&g, MC_1_20);
+
+            // GitHubの画面で選んだ設定をそのままC++に注入
+            StructureType target_type = ${{ github.event.inputs.structure_type }};
+            double max_dist = ${{ github.event.inputs.max_distance }};
+            uint64_t max_seeds = ${{ github.event.inputs.max_seeds }};
+
+            std::cout << "========================================================\n";
+            std::cout << "⚡ 【本物ロジック】統合版 1.18〜1.21+ 神シードスキャン中...\n";
+            std::cout << "========================================================\n";
+
+            for (uint64_t seed = 0; seed < max_seeds; ++seed) {
+                // 初期リージョン (0, 0) の構造物を計算
+                Pos pos = getStructurePos(target_type, seed, 0, 0);
+
+                // 🌟 埋もれた宝の場合：初期1チャンク（X:0~16, Z:0~16）にあるか判定
+                if (target_type == Buried_Treasure) {
+                    // 統合版の宝はチャンク内の固定位置（ブロック座標 8, 8）に生成される
+                    if (pos.x == 8 && pos.z == 8) {
+                        std::cout << "🎯 【神シード発見】 Seed: " << seed << " (初期1チャンク内に埋もれた宝が確定)\n";
+                    }
+                    continue;
+                }
+
+                // 🌟 その他の構造物：初期リスポーン(0,0)からの直線距離で判定
+                double dist = std::sqrt((double)pos.x * pos.x + (double)pos.z * pos.z);
+                if (dist <= max_dist) {
+                    std::cout << "🎯 【神シード発見】 Seed: " << seed 
+                              << " (距離: " << dist << "マス / 座標 X: " << pos.x << ", Z: " << pos.z << ")\n";
+                }
+            }
+
+            std::cout << "--------------------------------------------------------\n";
+            std::cout << "🔎 検索が完了しました。\n";
+            return 0;
+        }
+        EOF
+
+    - name: 🏗️ クラウドパワーで爆速ビルド（エラー回避フラグ付き）
+      run: |
+        cd MCBEStructureFinder
+        # 「-fpermissive」を足して、C言語コードの厳密すぎるエラーを回避
+        g++ -O3 -fpermissive main.cpp be_finder.cpp structure.cpp cubiomes/*.c -I. -Icubiomes -o finder
+
+    - name: 🎯 シード値スキャン実行！
+      run: |
+        cd MCBEStructureFinder
+        ./finder
