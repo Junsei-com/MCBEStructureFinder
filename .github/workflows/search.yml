@@ -29,12 +29,11 @@ jobs:
     steps:
     - name: 🛠️ 1.18+対応 自己完結型検索エンジンの生成
       run: |
-        # 外部ファイル（ヘッダー）の読み込みエラーを完全に防ぐため、
-        # 統合版の座標計算式(1.18+ロジック)を直接C++ファイルに実装します
         cat << 'EOF' > main.cpp
         #include <iostream>
         #include <cmath>
         #include <string>
+        #include <cstdint>
 
         struct BedrockPos { int x; int z; };
 
@@ -105,7 +104,6 @@ jobs:
 
     - name: 🏗️ エラーゼロの単独爆速ビルド
       run: |
-        # 外部ファイルへの依存を絶ったため、main.cpp単体で一瞬でコンパイルが完了します
         g++ -O3 main.cpp -o finder
 
     - name: 🎯 シード値スキャン実行！
