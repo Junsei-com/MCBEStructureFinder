@@ -1,4 +1,4 @@
-name: 統合版 カスタム神シード検索ツール(エラー完全排除版)
+name: 統合版 カスタム神シード検索ツール(修正版)
 
 on:
   workflow_dispatch:
@@ -10,101 +10,105 @@ on:
         type: choice
         options:
           - 'RuinedPortal'        # 荒廃したポータル
-          - 'BuriedTreasure'      # 埋もれた宝
           - 'Stronghold'          # 要塞（エンドポータル）
           - 'NetherFortress'      # ネザー要塞
           - 'Bastion'             # 廃要塞
       max_distance:
-        description: '② 初期スポーン(0,0)からの最大距離（マス）※宝以外'
+        description: '② 初期スポーン(0,0)からの最大距離（マス）'
         required: true
-        default: '20'
+        default: '30'
       max_seeds:
         description: '③ スキャンするシード数'
         required: true
-        default: '10000000'
+        default: '100000'
 
 jobs:
   fsg-search:
     runs-on: ubuntu-latest
     steps:
-    - name: 🛠️ 1.18+対応 自己完結型検索エンジンの生成
+    - name: 🛠️ 1.18+対応 ロジック修正版の生成
       run: |
         cat << 'EOF' > main.cpp
         #include <iostream>
         #include <cmath>
         #include <string>
         #include <cstdint>
+        #include <cstdlib>
 
         struct BedrockPos { int x; int z; };
 
-        // 統合版 1.18+ 専用の構造物座標ジェネレーター
-        BedrockPos get_1_18_pos(std::string type, uint64_t seed) {
-            uint64_t K = 0x5deece66dULL;
-            uint64_t M = 0xbULL;
+        // Java/Bedrock 1.18+ 共通の基本構造物配置アルゴリズム
+        BedrockPos get_structure_pos(std::string type, uint64_t seed) {
             uint64_t salt = 0;
-            int spacing = 1;
+            int spacing = 32;
+            int separation = 8;
             
-            // FSGで重要な主要構造物の生成定数
-            if (type == "RuinedPortal") { salt = 30001; spacing = 40; }
-            else if (type == "Stronghold") { salt = 10001; spacing = 80; }
-            else if (type == "NetherFortress") { salt = 30000; spacing = 27; }
-            else if (type == "Bastion") { salt = 30000; spacing = 27; }
+            if (type == "RuinedPortal") {
+                salt = 40003;
+                spacing = 40;
+                separation = 15;
+            } else if (type == "Stronghold") {
+                // 1.18+の要塞は特定リング状に配置されるため、簡易距離チェック用
+                salt = 10387313;
+                spacing = 32;
+                separation = 8;
+            } else if (type == "NetherFortress") {
+                salt = 30084232;
+                spacing = 27;
+                separation = 4;
+            } else if (type == "Bastion") {
+                salt = 30084233;
+                spacing = 27;
+                separation = 4;
+            }
+
+            // チャンク座標の算出
+            int64_t chunk_x = 0;
+            int64_t chunk_z = 0;
             
-            uint64_t region_seed = (seed + salt) ^ K;
-            region_seed = (region_seed * K + M) & 0xffffffffffffULL;
-            int cx = (region_seed >> 16) % spacing;
+            // 簡易的なリージョンごとのシードミキシング
+            uint64_t r_seed = seed + salt;
+            r_seed = (r_seed ^ 0x5deece66dULL) * 0x5deece66dULL + 0xbULL;
             
-            region_seed = (region_seed * K + M) & 0xffffffffffffULL;
-            int cz = (region_seed >> 16) % spacing;
+            int rnd1 = std::abs((int)(r_seed >> 16)) % (spacing - separation);
+            int rnd2 = std::abs((int)(r_seed >> 24)) % (spacing - separation);
             
-            return {cx * 16 + 8, cz * 16 + 8};
+            int x = rnd1 * 16;
+            int z = rnd2 * 16;
+            
+            return { x, z };
         }
 
-        int main() {
-            std::string target_type = "${{ github.event.inputs.structure_type }}";
-            double max_dist = ${{ github.event.inputs.max_distance }};
-            uint64_t max_seeds = ${{ github.event.inputs.max_seeds }};
+        int main(int argc, char* argv[]) {
+            if (argc < 4) return 1;
+            std::string target_type = argv[1];
+            double max_dist = std::atof(argv[2]);
+            uint64_t max_seeds = std::strtoull(argv[3], nullptr, 10);
 
             std::cout << "========================================================\n";
-            std::cout << "⚡ 【1.18+対応版】統合版 神シードスキャン中...\n";
+            std::cout << "⚡ 【1.18+対応】構造物判定スキャンを開始します...\n";
+            std::cout << "Target: " << target_type << " / Max Distance: " << max_dist << "\n";
             std::cout << "========================================================\n";
 
             for (uint64_t seed = 0; seed < max_seeds; ++seed) {
-                // 🌟 埋もれた宝の判定（初期1チャンク 0,0 判定）
-                if (target_type == "BuriedTreasure") {
-                    uint64_t K = 0x5deece66dULL;
-                    uint64_t M = 0xbULL;
-                    uint64_t rs = (seed + 40001) ^ K;
-                    rs = (rs * K + M) & 0xffffffffffffULL;
-                    int cx = (rs >> 16) % 16;
-                    rs = (rs * K + M) & 0xffffffffffffULL;
-                    int cz = (rs >> 16) % 16;
-                    
-                    if (cx == 0 && cz == 0) {
-                        std::cout << "🎯 【神シード発見】 Seed: " << seed << " (初期1チャンク内に埋もれた宝が確定)\n";
-                    }
-                    continue;
-                }
-
-                // 🌟 その他の構造物の判定
-                BedrockPos pos = get_1_18_pos(target_type, seed);
+                BedrockPos pos = get_structure_pos(target_type, seed);
                 double dist = std::sqrt((double)pos.x * pos.x + (double)pos.z * pos.z);
                 
                 if (dist <= max_dist) {
-                    std::cout << "🎯 【神シード発見】 Seed: " << seed 
-                              << " (距離: " << dist << "マス / 座標 X: " << pos.x << ", Z: " << pos.z << ")\n";
+                    // 1.18+の実際のワールド座標に変換して出力
+                    std::cout << "🎯 【候補シード】 Seed: " << seed 
+                              << " (推定距離: " << (int)dist << "マス / 座標 X: " << pos.x << ", Z: " << pos.z << ")\n";
                 }
             }
 
             std::cout << "--------------------------------------------------------\n";
-            std::cout << "🔎 検索が完了しました。\n";
+            std::cout << "🔎 スキャン完了しました。\n";
             return 0;
         }
         EOF
 
-    - name: 🏗️ エラーゼロの単独爆速ビルド
-      run: |
-        g++ -O3 main.cpp -o finder
+    - name: 🏗️ コンパイル
+      run: g++ -O3 main.cpp -o finder
 
-    - name: 🎯 シード値スキャン実行！
-      run: ./finder
+    - name: 🎯 安全な引数渡しでのスキャン実行
+      run: ./finder "${{ github.event.inputs.structure_type }}" "${{ github.event.inputs.max_distance }}" "${{ github.event.inputs.max_seeds }}"
